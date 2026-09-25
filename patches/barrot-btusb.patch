@@ -1,0 +1,11 @@
+--- a/drivers/bluetooth/btusb.c
++++ b/drivers/bluetooth/btusb.c
+@@ -435,6 +435,9 @@
+ 
+ 	/* Realtek Bluetooth devices */
++	/* Barrot (RTL8761BU) Bluetooth dongle */
++	{ USB_DEVICE(0x0bda, 0x8771), .driver_info = BTUSB_REALTEK |
++						     BTUSB_WIDEBAND_SPEECH },
+ 	{ USB_VENDOR_AND_INTERFACE_INFO(0x0bda, 0xe0, 0x01, 0x01),
+ 	  .driver_info = BTUSB_REALTEK },
+ 

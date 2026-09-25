@@ -1,0 +1,12 @@
+--- a/drivers/usb/core/quirks.c
++++ b/drivers/usb/core/quirks.c
+@@ -431,6 +431,9 @@
+ 	/* Generic RTL8153 based ethernet adapters */
+ 	{ USB_DEVICE(0x0bda, 0x8153), .driver_info = USB_QUIRK_NO_LPM },
+ 
++	/* Barrot (RTL8761BU) Bluetooth dongle: needs reset-resume */
++	{ USB_DEVICE(0x0bda, 0x8771), .driver_info = USB_QUIRK_RESET_RESUME },
++
+ 	/* SONiX USB DEVICE Touchpad */
+ 	{ USB_DEVICE(0x0c45, 0x7056), .driver_info =
+ 			USB_QUIRK_IGNORE_REMOTE_WAKEUP },

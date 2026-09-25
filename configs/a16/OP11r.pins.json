@@ -1,0 +1,48 @@
+{
+  "model": "OP11r (OnePlus 11R, waipio/sm8475, OOS16, android12-5.10)",
+  "base": "wild/sm8475, manifest oneplus_11r_w.xml",
+  "ksu": {
+    "type": "ksun",
+    "hash": "234f6e040fcbca18b16d2398e1aa225712ec99ad",
+    "version": "33239",
+    "note": "proven green; v3.4.0 needs susfs port, not supported"
+  },
+  "susfs": {
+    "ref": "d4c3914bc2e4b538d562193a65e5a11a0289d6ea",
+    "version": "v2.2.0"
+  },
+  "clang": "WeebX-Clang-19.1.5 via zyc_compiler (fork toolchain-cache release)",
+  "kernel_patches": {
+    "repo": "iflyabd/kernel_patches",
+    "branch": "aug11",
+    "sha": "f569cc9e69d6f03a488c391db4cc00db8ead7a59"
+  },
+  "drivers": {
+    "rtl88x2bu": {
+      "repo": "morrownr/88x2bu-20210702",
+      "sha": "d31ffa827bb95b8a436c2a469b5163b634ac4333",
+      "mode": "in-tree vendored"
+    },
+    "in_tree": [
+      "MT7601U",
+      "BT_HCIBTUSB",
+      "BT_INTEL",
+      "BT_BCM",
+      "BT_RTL",
+      "MAC80211",
+      "CFG80211",
+      "BT",
+      "CRYPTO_ECDH",
+      "CRYPTO_CMAC"
+    ],
+    "firmware": [
+      "mt7601u.bin",
+      "intel/ibt-18/20 pairs",
+      "rtl_bt/rtl8822b pair"
+    ],
+    "quirk": "Barrot 0bda:8771 (btusb WBS + usb reset-resume)"
+  },
+  "proven_green_run": "to be filled by release rebuild",
+  "firmware_version": "CPH2487_16.0.5.1002(EX01), Android 16, July 2026 patch",
+  "slot_policy": "boot_a sacred (working fallback); all tests on boot_b"
+}
