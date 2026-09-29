@@ -1,0 +1,175 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Wild 11R <wild-11r@local>
+Date: Mon, 29 Sep 2026 00:00:00 +0000
+Subject: [PATCH] mt7601u: add AP mode support (beacon offload) for Evil Twin
+
+The in-kernel mt7601u driver only advertises STATION (+ software monitor),
+so hostapd fails with "Could not configure driver mode" and no Evil Twin
+AP can run on MT7601U USB adapters.
+
+The hardware can transmit beacons on its own: the driver already programs
+16x 512-byte beacon slots (MT_BEACON_BASE via MT_BCN_OFFSET) at init, and
+the group-WCID / shared-key / per-STA paths used by an AP already exist
+(sta_add, sta_remove, set_key with sta==NULL). The only missing pieces are
+the AP interface advertisement, the beacon template upload and the beacon
+TX engine enable.
+
+This patch:
+- advertises NL80211_IFTYPE_AP in wiphy->interface_modes,
+- implements start_ap/stop_ap (BSSID + beacon TX engine on/off),
+- programs the beacon template (TXWI + 802.11 beacon from
+  ieee80211_beacon_get) into the vif's beacon slot on BSS_CHANGED_BEACON
+  and (re)starts the TSF timer with BEACON_TX enabled,
+- stops beacon TX when the beacon is disabled.
+
+Probe responses, auth/assoc and data frames keep flowing through the normal
+mac80211 software + .tx paths (TX injection already proven working).
+Power-save TIM updates are not implemented yet (set_tim left out):
+APs work, power-saving clients may not fetch buffered frames.
+
+Signed-off-by: Wild 11R <wild-11r@local>
+---
+--- a/drivers/net/wireless/mediatek/mt7601u/init.c
++++ b/drivers/net/wireless/mediatek/mt7601u/init.c
+@@ -609,7 +609,8 @@
+ 	SET_IEEE80211_PERM_ADDR(hw, dev->macaddr);
+ 
+ 	wiphy->features |= NL80211_FEATURE_ACTIVE_MONITOR;
+-	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION);
++	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
++				 BIT(NL80211_IFTYPE_AP);
+ 
+ 	wiphy_ext_feature_set(wiphy, NL80211_EXT_FEATURE_CQM_RSSI_LIST);
+ 
+--- a/drivers/net/wireless/mediatek/mt7601u/mac.c
++++ b/drivers/net/wireless/mediatek/mt7601u/mac.c
+@@ -284,6 +284,66 @@
+ 		MT_BEACON_TIME_CFG_TBTT_EN;
+ }
+ 
++/* Beacon template RAM slot size programmed by mt76_init_beacon_offsets. */
++#define MT7601U_BEACON_SLOT_SIZE	512
++
++void mt7601u_mac_set_beacon(struct mt7601u_dev *dev, struct ieee80211_vif *vif)
++{
++	struct mt76_vif *mvif = (struct mt76_vif *)vif->drv_priv;
++	struct sk_buff *skb;
++	struct mt76_txwi txwi;
++	u32 buf[MT7601U_BEACON_SLOT_SIZE / sizeof(u32)];
++	unsigned int len;
++
++	if (mvif->idx >= 16)
++		return;
++
++	skb = ieee80211_beacon_get(dev->hw, vif);
++	if (!skb)
++		return;
++
++	if (skb->len + sizeof(txwi) > sizeof(buf)) {
++		dev_warn(dev->dev,
++			 "mt7601u: beacon too long (%u bytes), not programmed\n",
++			 skb->len);
++		dev_kfree_skb(skb);
++		return;
++	}
++
++	/* 1 Mbps CCK beacon, no ACK, HW-assigned sequence number,
++	 * transmitted to the vif group (broadcast) WCID.
++	 */
++	memset(&txwi, 0, sizeof(txwi));
++	txwi.rate_ctl = cpu_to_le16(FIELD_PREP(MT_TXWI_RATE_PHY_MODE,
++					       MT_PHY_TYPE_CCK));
++	txwi.ack_ctl = MT_TXWI_ACK_CTL_NSEQ;
++	txwi.wcid = mvif->group_wcid.idx;
++	txwi.len_ctl = cpu_to_le16(FIELD_PREP(MT_TXWI_LEN_BYTE_CNT,
++					      skb->len + sizeof(txwi)));
++
++	memset(buf, 0, sizeof(buf));
++	memcpy(buf, &txwi, sizeof(txwi));
++	memcpy((u8 *)buf + sizeof(txwi), skb->data, skb->len);
++	len = DIV_ROUND_UP(sizeof(txwi) + skb->len, sizeof(u32));
++	mt7601u_burst_write_regs(dev, dev->beacon_offsets[mvif->idx],
++				 buf, len);
++	dev_kfree_skb(skb);
++
++	/* (Re)start the TSF timer and the beacon TX engine. */
++	mt76_rmw(dev, MT_BEACON_TIME_CFG,
++		 MT_BEACON_TIME_CFG_INTVAL |
++		 MT_BEACON_TIME_CFG_TIMER_EN |
++		 MT_BEACON_TIME_CFG_SYNC_MODE |
++		 MT_BEACON_TIME_CFG_TBTT_EN |
++		 MT_BEACON_TIME_CFG_BEACON_TX,
++		 FIELD_PREP(MT_BEACON_TIME_CFG_INTVAL,
++			    vif->bss_conf.beacon_int << 4) |
++		 MT_BEACON_TIME_CFG_TIMER_EN |
++		 MT_BEACON_TIME_CFG_SYNC_MODE |
++		 MT_BEACON_TIME_CFG_TBTT_EN |
++		 MT_BEACON_TIME_CFG_BEACON_TX);
++}
++
+ static void mt7601u_check_mac_err(struct mt7601u_dev *dev)
+ {
+ 	u32 val = mt7601u_rr(dev, 0x10f4);
+--- a/drivers/net/wireless/mediatek/mt7601u/mac.h
++++ b/drivers/net/wireless/mediatek/mt7601u/mac.h
+@@ -167,5 +167,7 @@
+ mt7601u_mac_fetch_tx_status(struct mt7601u_dev *dev);
+ void mt76_send_tx_status(struct mt7601u_dev *dev, struct mt76_tx_status *stat);
+ void mt7601u_set_macaddr(struct mt7601u_dev *dev, const u8 *addr);
++void mt7601u_mac_set_beacon(struct mt7601u_dev *dev,
++			    struct ieee80211_vif *vif);
+ 
+ #endif
+--- a/drivers/net/wireless/mediatek/mt7601u/main.c
++++ b/drivers/net/wireless/mediatek/mt7601u/main.c
+@@ -138,6 +138,13 @@
+ 
+ 	mutex_lock(&dev->mutex);
+ 
++	if (changed & BSS_CHANGED_BEACON)
++		mt7601u_mac_set_beacon(dev, vif);
++
++	if (changed & BSS_CHANGED_BEACON_ENABLED && !info->enable_beacon)
++		mt76_clear(dev, MT_BEACON_TIME_CFG,
++			   MT_BEACON_TIME_CFG_BEACON_TX);
++
+ 	if (changed & BSS_CHANGED_ASSOC)
+ 		mt7601u_phy_con_cal_onoff(dev, info);
+ 
+@@ -404,6 +411,27 @@
+ 	rcu_read_unlock();
+ }
+ 
++static int mt7601u_start_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
++{
++	struct mt7601u_dev *dev = hw->priv;
++
++	mutex_lock(&dev->mutex);
++	mt7601u_addr_wr(dev, MT_MAC_BSSID_DW0, vif->addr);
++	mutex_unlock(&dev->mutex);
++
++	return 0;
++}
++
++static void mt7601u_stop_ap(struct ieee80211_hw *hw, struct ieee80211_vif *vif)
++{
++	struct mt7601u_dev *dev = hw->priv;
++
++	mutex_lock(&dev->mutex);
++	mt76_clear(dev, MT_BEACON_TIME_CFG,
++		   MT_BEACON_TIME_CFG_BEACON_TX);
++	mutex_unlock(&dev->mutex);
++}
++
+ const struct ieee80211_ops mt7601u_ops = {
+ 	.tx = mt7601u_tx,
+ 	.start = mt7601u_start,
+@@ -413,6 +441,8 @@
+ 	.config = mt7601u_config,
+ 	.configure_filter = mt76_configure_filter,
+ 	.bss_info_changed = mt7601u_bss_info_changed,
++	.start_ap = mt7601u_start_ap,
++	.stop_ap = mt7601u_stop_ap,
+ 	.sta_add = mt7601u_sta_add,
+ 	.sta_remove = mt7601u_sta_remove,
+ 	.sta_notify = mt7601u_sta_notify,

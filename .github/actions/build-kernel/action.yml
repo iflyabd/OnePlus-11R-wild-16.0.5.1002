@@ -1933,6 +1933,10 @@ runs:
         patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$GITHUB_WORKSPACE/patches/barrot-usb-quirk.patch" || true
         grep -q "0x0bda, 0x8771" "$COMMON_KERNEL_FOLDER/drivers/bluetooth/btusb.c" && echo "quirk present: btusb" || echo "::warning::barrot btusb quirk NOT applied"
         grep -q "0x0bda, 0x8771" "$COMMON_KERNEL_FOLDER/drivers/usb/core/quirks.c" && echo "quirk present: usb-quirks" || echo "::warning::barrot usb quirk NOT applied"
+        echo "Applying MT7601U AP-mode patch (Evil Twin beacon offload)..."
+        patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$GITHUB_WORKSPACE/patches/mt7601u-ap-mode.patch" || true
+        grep -q "mt7601u_mac_set_beacon" "$COMMON_KERNEL_FOLDER/drivers/net/wireless/mediatek/mt7601u/mac.c" && echo "ap-mode present: mt7601u beacon" || echo "::warning::mt7601u AP patch NOT applied"
+        grep -q "NL80211_IFTYPE_AP" "$COMMON_KERNEL_FOLDER/drivers/net/wireless/mediatek/mt7601u/init.c" && echo "ap-mode present: mt7601u iftypes" || echo "::warning::mt7601u AP iftypes NOT applied"
         echo "Vendoring RTL88x2BU driver into tree (in-tree kbuild)..."
         RTL88_SHA=d31ffa827bb95b8a436c2a469b5163b634ac4333
         rm -rf rtl88x2bu
