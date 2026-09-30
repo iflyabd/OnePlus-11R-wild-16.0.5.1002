@@ -1937,6 +1937,10 @@ runs:
         patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$GITHUB_WORKSPACE/patches/mt7601u-ap-mode.patch" || true
         grep -q "mt7601u_mac_set_beacon" "$COMMON_KERNEL_FOLDER/drivers/net/wireless/mediatek/mt7601u/mac.c" && echo "ap-mode present: mt7601u beacon" || echo "::warning::mt7601u AP patch NOT applied"
         grep -q "NL80211_IFTYPE_AP" "$COMMON_KERNEL_FOLDER/drivers/net/wireless/mediatek/mt7601u/init.c" && echo "ap-mode present: mt7601u iftypes" || echo "::warning::mt7601u AP iftypes NOT applied"
+        echo "Applying Barrot BR8554 BT quirk (33fa:0010/0012)..."
+        patch -p1 --forward -d "$COMMON_KERNEL_FOLDER" < "$GITHUB_WORKSPACE/patches/btusb-barrot-33fa0012-quirk.patch" || true
+        grep -q "0x33fa, 0x0012" "$COMMON_KERNEL_FOLDER/drivers/bluetooth/btusb.c" && echo "quirk present: btusb 33fa:0012" || echo "::warning::btusb 33fa quirk NOT applied"
+        grep -q "HCI_QUIRK_BROKEN_READ_EXT_FEATURES" "$COMMON_KERNEL_FOLDER/net/bluetooth/hci_core.c" && echo "quirk present: hci ext-features skip" || echo "::warning::hci ext-features skip NOT applied"
         echo "Vendoring RTL88x2BU driver into tree (in-tree kbuild)..."
         RTL88_SHA=d31ffa827bb95b8a436c2a469b5163b634ac4333
         rm -rf rtl88x2bu

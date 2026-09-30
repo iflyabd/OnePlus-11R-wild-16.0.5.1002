@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Wild 11R <wild-11r@local>
+Date: Tue, 30 Sep 2026 00:00:00 +0000
+Subject: [PATCH] btusb/hci: Barrot BR8554 quirk (UGREEN 33fa:0010/0012)
+
+Barrot BR8554 firmware hangs on HCI_OP_READ_LOCAL_EXT_FEATURES during
+init and wedges the command path (all later commands time out, hci0
+never comes UP). Same class of fix as upstream BTUSB_BARROT: match the
+IDs, flag the quirk, skip extended-features page 1+ reads in
+hci_init2/4. Probe responses, pairing and data keep flowing through the
+normal paths.
+--- a/drivers/bluetooth/btusb.c
++++ b/drivers/bluetooth/btusb.c
+@@ -60,6 +60,7 @@
+ #define BTUSB_WIDEBAND_SPEECH	0x400000
+ #define BTUSB_VALID_LE_STATES   0x800000
+ #define BTUSB_QCA_WCN6855	0x1000000
++#define BTUSB_BARROT		0x10000000
+ 
+ static const struct usb_device_id btusb_table[] = {
+ 	/* Generic Bluetooth USB device */
+@@ -496,6 +497,12 @@
+ 	/* Silicon Wave based devices */
+ 	{ USB_DEVICE(0x0c10, 0x0000), .driver_info = BTUSB_SWAVE },
+ 
++	/* Barrot BR8554 based devices (e.g. UGREEN 33fa:0012): firmware
++	 * hangs on extended-features probes, skip them via quirk.
++	 */
++	{ USB_DEVICE(0x33fa, 0x0010), .driver_info = BTUSB_BARROT },
++	{ USB_DEVICE(0x33fa, 0x0012), .driver_info = BTUSB_BARROT },
++
+ 	{ }	/* Terminating entry */
+ };
+ 
+@@ -4296,6 +4303,9 @@
+ 	if (id->driver_info & BTUSB_VALID_LE_STATES)
+ 		set_bit(HCI_QUIRK_VALID_LE_STATES, &hdev->quirks);
+ 
++	if (id->driver_info & BTUSB_BARROT)
++		set_bit(HCI_QUIRK_BROKEN_READ_EXT_FEATURES, &hdev->quirks);
++
+ 	if (id->driver_info & BTUSB_DIGIANSWER) {
+ 		data->cmdreq_type = USB_TYPE_VENDOR;
+ 		set_bit(HCI_QUIRK_RESET_ON_CLOSE, &hdev->quirks);
+--- a/include/net/bluetooth/hci.h
++++ b/include/net/bluetooth/hci.h
+@@ -246,6 +246,14 @@
+ 	 * HCI after resume.
+ 	 */
+ 	HCI_QUIRK_NO_SUSPEND_NOTIFIER,
++
++	/*
++	 * When this quirk is set, the HCI_OP_READ_LOCAL_EXT_FEATURES
++	 * requests are skipped during init. This is intended for Barrot
++	 * BR8554 based devices (e.g. 33fa:0010/0012) whose firmware hangs
++	 * on extended-features probes and wedges the command path.
++	 */
++	HCI_QUIRK_BROKEN_READ_EXT_FEATURES,
+ };
+ 
+ /* HCI device flags */
+--- a/net/bluetooth/hci_core.c
++++ b/net/bluetooth/hci_core.c
+@@ -481,7 +481,8 @@
+ 	if (lmp_inq_tx_pwr_capable(hdev))
+ 		hci_req_add(req, HCI_OP_READ_INQ_RSP_TX_POWER, 0, NULL);
+ 
+-	if (lmp_ext_feat_capable(hdev)) {
++	if (lmp_ext_feat_capable(hdev) &&
++	    !test_bit(HCI_QUIRK_BROKEN_READ_EXT_FEATURES, &hdev->quirks)) {
+ 		struct hci_cp_read_local_ext_features cp;
+ 
+ 		cp.page = 0x01;
+@@ -789,7 +790,9 @@
+ 	}
+ 
+ 	/* Read features beyond page 1 if available */
+-	for (p = 2; p < HCI_MAX_PAGES && p <= hdev->max_page; p++) {
++	for (p = 2; p < HCI_MAX_PAGES && p <= hdev->max_page &&
++	     !test_bit(HCI_QUIRK_BROKEN_READ_EXT_FEATURES, &hdev->quirks);
++	     p++) {
+ 		struct hci_cp_read_local_ext_features cp;
+ 
+ 		cp.page = p;
