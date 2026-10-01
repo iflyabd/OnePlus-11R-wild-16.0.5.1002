@@ -1908,6 +1908,9 @@ runs:
         CONFIG_MT7601U=m
         CONFIG_BT=m
         CONFIG_BT_HCIBTUSB=m
+        CONFIG_BT_RFCOMM=m
+        CONFIG_BT_BNEP=m
+        CONFIG_BT_HIDP=m
         CONFIG_BT_INTEL=m
         CONFIG_BT_BCM=m
         CONFIG_BT_RTL=m
@@ -2344,7 +2347,7 @@ runs:
         echo "Packaging layered .ko files into AnyKernel3 zip (extra-modules/, manual insmod)..."
         MODDIR="$AK3_FOLDER/extra-modules"
         mkdir -p "$MODDIR"
-        for mod in mt7601u mac80211 cfg80211 btusb bluetooth rfkill btintel btbcm btrtl ecdh_generic ecc dh_generic aes_generic sha256_generic cmac crc16 88x2bu; do
+        for mod in mt7601u mac80211 cfg80211 btusb bluetooth rfkill btintel btbcm btrtl rfcomm bnep hidp ecdh_generic ecc dh_generic aes_generic sha256_generic cmac crc16 88x2bu; do
           found=$(find "$COMMON_KERNEL_FOLDER/out" -name "${mod}.ko" 2>/dev/null | head -n 1)
           if [ -n "$found" ]; then
             cp "$found" "$MODDIR/"
