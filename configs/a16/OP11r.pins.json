@@ -42,7 +42,7 @@
     ],
     "quirk": "Barrot 0bda:8771 (btusb WBS + usb reset-resume)"
   },
-  "proven_green_run": "to be filled by release rebuild",
+  "proven_green_run": "39196033743 (v2.2.0-r2, 2026-10-19, 88x2bu monitor/injection/AP guard active)",
   "firmware_version": "CPH2487_16.0.5.1002(EX01), Android 16, July 2026 patch",
   "slot_policy": "boot_a sacred (working fallback); all tests on boot_b"
 }
