@@ -1969,6 +1969,21 @@ runs:
         for d in $(cd "$DW" && find . -name '*.h' -exec dirname {} \; | sort -u); do
           echo "ccflags-y += -I\$(srctree)/drivers/net/wireless/rtl88x2bu/${d#./}" >> "$DW/Makefile"
         done
+        # Full-functionality guard (Alfa-class USB dongle): monitor mode +
+        # packet injection (aircrack-ng/hcxdumptool), AP mode + Evil Twin
+        # (hostapd/airgeddon), P2P, TDLS, WPA-802.11w, bridge extension.
+        # morrownr/d31ffa8 enables these by default; enforce so a future pin
+        # change cannot silently drop features the toolchain depends on.
+        for opt in CONFIG_WIFI_MONITOR CONFIG_AP_MODE CONFIG_P2P CONFIG_TDLS CONFIG_80211W CONFIG_BR_EXT; do
+          if grep -qE "^${opt} = y" "$DW/Makefile"; then
+            echo "88x2bu feature ON: ${opt}"
+          else
+            sed -i "s|^${opt} = .*|${opt} = y|" "$DW/Makefile"
+            echo "88x2bu feature FORCED: ${opt}"
+          fi
+          grep -qE "^${opt} = y" "$DW/Makefile" || { echo "::error::88x2bu ${opt} not enabled"; exit 1; }
+        done
+        grep -E "^CONFIG_(WIFI_MONITOR|AP_MODE|P2P|TDLS|80211W|BR_EXT) = " "$DW/Makefile" | sed 's/^/88x2bu flag: /'
         printf '%s\n' 'config RTL8822BU' '	tristate "Realtek RTL8812BU/RTL8822BU USB WiFi (morrownr, in-tree)"' '	depends on MAC80211 && USB' '	default m' > "$DW/Kconfig"
         grep -q "wireless/rtl88x2bu" "$COMMON_KERNEL_FOLDER/drivers/net/wireless/Makefile" || echo 'obj-$(CONFIG_RTL8822BU) += rtl88x2bu/' >> "$COMMON_KERNEL_FOLDER/drivers/net/wireless/Makefile"
         grep -q "wireless/rtl88x2bu/Kconfig" "$COMMON_KERNEL_FOLDER/drivers/net/wireless/Kconfig" || echo 'source "drivers/net/wireless/rtl88x2bu/Kconfig"' >> "$COMMON_KERNEL_FOLDER/drivers/net/wireless/Kconfig"
@@ -2356,6 +2371,9 @@ runs:
             echo "not built as module (builtin or absent): $mod"
           fi
         done
+        for must in 88x2bu mt7601u cfg80211 mac80211; do
+          [ -f "$MODDIR/$must.ko" ] || { echo "::error::required dongle module missing: $must.ko"; exit 1; }
+        done
         mkdir -p "$ARTIFACTS_FOLDER"
         for k in "$MODDIR"/*.ko; do cp "$k" "$ARTIFACTS_FOLDER/" 2>/dev/null || true; done
         if [ -f "$COMMON_KERNEL_FOLDER/out/certs/signing_key.pem" ]; then
@@ -2371,6 +2389,11 @@ runs:
           "  insmod cfg80211.ko; insmod mac80211.ko; insmod mt7601u.ko" \
           "  insmod rfkill.ko; insmod bluetooth.ko; insmod btusb.ko" \
           "  insmod cfg80211.ko; insmod 88x2bu.ko" \
+          "88x2bu (DWA-185) full set: monitor + injection + AP + P2P + TDLS + 802.11w." \
+          "  pro load: insmod 88x2bu.ko rtw_ips_mode=0 rtw_power_mgnt=0 rtw_enusbss=0" \
+          "  monitor : iw dev <if> set monitor none; ip link set <if> up; iw dev <if> set channel N" \
+          "  capture : tcpdump/tshark -i <if>   injection: aireplay-ng --test <if>" \
+          "  AP/twin : hostapd -i <if> (nl80211); mt7601u = beacon-offload twin card" \
           "Firmware is in firmware/: mt7601u.bin + intel ibt + rtl8822b BT blobs" \
           "go to /vendor/firmware/ (root) first." \
           "88x2bu firmware is compiled into 88x2bu.ko (no blob needed)." \
