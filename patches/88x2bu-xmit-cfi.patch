@@ -1,0 +1,63 @@
+diff --git a/include/xmit_osdep.h b/include/xmit_osdep.h
+index 9bf9c93..d011ce5 100644
+--- a/include/xmit_osdep.h
++++ b/include/xmit_osdep.h
+@@ -67,8 +67,8 @@ struct sta_xmit_priv;
+ struct xmit_frame;
+ struct xmit_buf;
+ 
+-extern int _rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev);
+-extern int rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev);
++extern netdev_tx_t _rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev);
++extern netdev_tx_t rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev);
+ 
+ #endif /* PLATFORM_LINUX */
+ 
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+index f711303..4404e51 100644
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -4908,7 +4908,7 @@ static int rtw_cfg80211_monitor_if_close(struct net_device *ndev)
+ 	return ret;
+ }
+ 
+-static int rtw_cfg80211_monitor_if_xmit_entry(struct sk_buff *skb, struct net_device *ndev)
++static netdev_tx_t rtw_cfg80211_monitor_if_xmit_entry(struct sk_buff *skb, struct net_device *ndev)
+ {
+ 	int ret = 0;
+ 	int rtap_len;
+diff --git a/os_dep/linux/mlme_linux.c b/os_dep/linux/mlme_linux.c
+index 6fd24e8..5c97086 100644
+--- a/os_dep/linux/mlme_linux.c
++++ b/os_dep/linux/mlme_linux.c
+@@ -290,7 +290,7 @@ void rtw_indicate_sta_disassoc_event(_adapter *padapter, struct sta_info *psta)
+ 
+ #ifdef CONFIG_HOSTAPD_MLME
+ 
+-static int mgnt_xmit_entry(struct sk_buff *skb, struct net_device *pnetdev)
++static netdev_tx_t mgnt_xmit_entry(struct sk_buff *skb, struct net_device *pnetdev)
+ {
+ 	struct hostapd_priv *phostapdpriv = rtw_netdev_priv(pnetdev);
+ 	_adapter *padapter = (_adapter *)phostapdpriv->padapter;
+diff --git a/os_dep/linux/xmit_linux.c b/os_dep/linux/xmit_linux.c
+index f4f508e..addd6df 100644
+--- a/os_dep/linux/xmit_linux.c
++++ b/os_dep/linux/xmit_linux.c
+@@ -371,7 +371,7 @@ void rtw_os_wake_queue_at_free_stainfo(_adapter *padapter, int *qcnt_freed)
+ #endif
+ }
+ 
+-int _rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
++netdev_tx_t _rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
+ {
+ 	_adapter *padapter = (_adapter *)rtw_netdev_priv(pnetdev);
+ 	struct xmit_priv *pxmitpriv = &padapter->xmitpriv;
+@@ -514,7 +514,7 @@ fail:
+ }
+ #endif
+ 
+-int rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
++netdev_tx_t rtw_xmit_entry(_pkt *pkt, _nic_hdl pnetdev)
+ {
+ 	_adapter *padapter = (_adapter *)rtw_netdev_priv(pnetdev);
+ 	struct	mlme_priv	*pmlmepriv = &(padapter->mlmepriv);

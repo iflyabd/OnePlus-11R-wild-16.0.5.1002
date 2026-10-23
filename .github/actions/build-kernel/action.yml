@@ -1978,6 +1978,30 @@ runs:
           echo "::error::88x2bu tasklet callback casts still present after patch"; exit 1
         fi
         echo "cfi fix: no tasklet callback casts left"
+        # CFI fix #2: in Linux 5.10 netdev_tx_t is enum netdev_tx, not int.
+        # The vendor ndo_start_xmit callbacks return int, so the first packet
+        # TX (aireplay-ng injection) trips __cfi_check_fail in xmit_one ->
+        # BRK panic -> hard reset. Patch all four callbacks + declarations.
+        echo "Applying 88x2bu ndo_start_xmit CFI prototype fix..."
+        patch -p1 --forward -d "$DW" < "$GITHUB_WORKSPACE/patches/88x2bu-xmit-cfi.patch" || true
+        grep -q "netdev_tx_t _rtw_xmit_entry" "$DW/os_dep/linux/xmit_linux.c" \
+          && echo "cfi fix: _rtw_xmit_entry -> netdev_tx_t" \
+          || { echo "::error::88x2bu CFI patch missing (_rtw_xmit_entry)"; exit 1; }
+        grep -q "netdev_tx_t rtw_xmit_entry" "$DW/os_dep/linux/xmit_linux.c" \
+          && echo "cfi fix: rtw_xmit_entry -> netdev_tx_t" \
+          || { echo "::error::88x2bu CFI patch missing (rtw_xmit_entry)"; exit 1; }
+        grep -q "static netdev_tx_t rtw_cfg80211_monitor_if_xmit_entry" "$DW/os_dep/linux/ioctl_cfg80211.c" \
+          && echo "cfi fix: monitor xmit -> netdev_tx_t" \
+          || { echo "::error::88x2bu CFI patch missing (monitor xmit)"; exit 1; }
+        grep -q "static netdev_tx_t mgnt_xmit_entry" "$DW/os_dep/linux/mlme_linux.c" \
+          && echo "cfi fix: mgnt_xmit_entry -> netdev_tx_t" \
+          || { echo "::error::88x2bu CFI patch missing (mgnt xmit)"; exit 1; }
+        grep -q "extern netdev_tx_t rtw_xmit_entry" "$DW/include/xmit_osdep.h" \
+          || { echo "::error::88x2bu CFI patch missing (xmit_osdep.h)"; exit 1; }
+        if grep -rqE "^(static )?int (_?rtw_xmit_entry|mgnt_xmit_entry|rtw_cfg80211_monitor_if_xmit_entry)\(" "$DW/os_dep" "$DW/include"; then
+          echo "::error::88x2bu ndo_start_xmit callbacks still return int"; exit 1
+        fi
+        echo "cfi fix: all ndo_start_xmit callbacks return netdev_tx_t"
         sed -i 's|^ccflags-y += -Wno-stringop-overread|#ccflags-y += -Wno-stringop-overread|' "$DW/Makefile"
         printf '\nccflags-y += -Wno-error\n' >> "$DW/Makefile"
         # In-tree kbuild reads this Makefile with cwd=srctree, which breaks
