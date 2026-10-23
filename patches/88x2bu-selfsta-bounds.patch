@@ -1,0 +1,39 @@
+diff --git a/core/rtw_sta_mgt.c b/core/rtw_sta_mgt.c
+index c2e27b9..91b5e13 100644
+--- a/core/rtw_sta_mgt.c
++++ b/core/rtw_sta_mgt.c
+@@ -814,7 +814,11 @@ u32	rtw_free_stainfo(_adapter *padapter , struct sta_info *psta)
+ 	exit_critical_bh(&pdefrag_q->lock);
+ 
+ 
+-	if (!((psta->state & WIFI_AP_STATE) || MacAddr_isBcst(psta->cmn.mac_addr)) && is_pre_link_sta == _FALSE)
++	/* Skip the AP's own station: rtw_alloc_macid() marks it with the
++	 * out-of-range mac_id macid_ctl->num, which the ODM hook cannot index.
++	 */
++	if (!((psta->state & WIFI_AP_STATE) || MacAddr_isBcst(psta->cmn.mac_addr)) && is_pre_link_sta == _FALSE
++		&& !_rtw_memcmp(psta->cmn.mac_addr, adapter_mac_addr(padapter), ETH_ALEN))
+ 		rtw_hal_set_odm_var(padapter, HAL_ODM_STA_INFO, psta, _FALSE);
+ 
+ 
+diff --git a/hal/phydm/phydm_interface.c b/hal/phydm/phydm_interface.c
+index 7a0c428..d97c50b 100644
+--- a/hal/phydm/phydm_interface.c
++++ b/hal/phydm/phydm_interface.c
+@@ -1283,9 +1283,16 @@ odm_dpk_by_fw(struct dm_struct *dm)
+ void phydm_cmn_sta_info_hook(struct dm_struct *dm, u8 mac_id,
+ 			     struct cmn_sta_info *pcmn_sta_info)
+ {
++	/* The driver marks the AP's own station with mac_id ==
++	 * macid_ctl->num (out of range); never index the ODM tables with it.
++	 */
++	if (mac_id >= ODM_ASSOCIATE_ENTRY_NUM)
++		return;
++
+ 	dm->phydm_sta_info[mac_id] = pcmn_sta_info;
+ 
+-	if (is_sta_active(pcmn_sta_info))
++	if (is_sta_active(pcmn_sta_info)
++	    && pcmn_sta_info->mac_id < ODM_ASSOCIATE_ENTRY_NUM)
+ 		dm->phydm_macid_table[pcmn_sta_info->mac_id] = mac_id;
+ }
+ 

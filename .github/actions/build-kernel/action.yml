@@ -2002,6 +2002,21 @@ runs:
           echo "::error::88x2bu ndo_start_xmit callbacks still return int"; exit 1
         fi
         echo "cfi fix: all ndo_start_xmit callbacks return netdev_tx_t"
+        # UBSAN fix #3: the AP's own sta_info is allocated with
+        # mac_id = macid_ctl->num (out of range) by rtw_alloc_macid(), and
+        # stop_ap_mode() -> rtw_free_all_stainfo() -> rtw_free_stainfo()
+        # passes it to SetHalODMVar/phydm_cmn_sta_info_hook(). With
+        # CONFIG_UBSAN_TRAP=y that indexes phydm_sta_info[32] and panics
+        # (BRK #0x5512) when the adapter is unplugged while AP mode is up.
+        # Skip the AP self-station and bounds-check the ODM hook.
+        echo "Applying 88x2bu AP self-station ODM/UBSAN fix..."
+        patch -p1 --forward -d "$DW" < "$GITHUB_WORKSPACE/patches/88x2bu-selfsta-bounds.patch" || true
+        grep -q "if (mac_id >= ODM_ASSOCIATE_ENTRY_NUM)" "$DW/hal/phydm/phydm_interface.c" \
+          && echo "ubsan fix: phydm_cmn_sta_info_hook bounds check" \
+          || { echo "::error::88x2bu self-sta patch missing (phydm bounds)"; exit 1; }
+        grep -q "!_rtw_memcmp(psta->cmn.mac_addr, adapter_mac_addr(padapter), ETH_ALEN)" "$DW/core/rtw_sta_mgt.c" \
+          && echo "ubsan fix: rtw_free_stainfo skips AP self-station" \
+          || { echo "::error::88x2bu self-sta patch missing (free_stainfo)"; exit 1; }
         sed -i 's|^ccflags-y += -Wno-stringop-overread|#ccflags-y += -Wno-stringop-overread|' "$DW/Makefile"
         printf '\nccflags-y += -Wno-error\n' >> "$DW/Makefile"
         # In-tree kbuild reads this Makefile with cwd=srctree, which breaks
