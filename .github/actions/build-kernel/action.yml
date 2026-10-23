@@ -1957,6 +1957,27 @@ runs:
         rm -rf "$DW"
         cp -r rtl88x2bu "$DW"
         rm -rf "$DW/.git"
+        # CFI fix (kernel has CONFIG_CFI_CLANG=y): the vendor driver registers
+        # its tasklet callbacks as void(void *), but Linux invokes them as
+        # void(unsigned long). The cross-DSO CFI type check then traps the
+        # first time a TX/RX tasklet runs (__cfi_check_fail in 88x2bu ->
+        # BRK handler panic -> hard reset). Patch all three callbacks
+        # (tx/rx/mesh) to the kernel prototype and drop the casts.
+        echo "Applying 88x2bu tasklet CFI prototype fix..."
+        patch -p1 --forward -d "$DW" < "$GITHUB_WORKSPACE/patches/88x2bu-tasklet-cfi.patch" || true
+        grep -q "void usb_recv_tasklet(unsigned long data)" "$DW/os_dep/linux/usb_ops_linux.c" \
+          && echo "cfi fix: usb_recv_tasklet(unsigned long)" \
+          || { echo "::error::88x2bu CFI patch missing (usb_recv_tasklet)"; exit 1; }
+        grep -q "void rtl8822bu_xmit_tasklet(unsigned long data)" "$DW/hal/rtl8822b/usb/rtl8822bu_xmit.c" \
+          && echo "cfi fix: rtl8822bu_xmit_tasklet(unsigned long)" \
+          || { echo "::error::88x2bu CFI patch missing (xmit_tasklet)"; exit 1; }
+        grep -q "void mpath_tx_tasklet_hdl(unsigned long data)" "$DW/core/mesh/rtw_mesh.c" \
+          && echo "cfi fix: mpath_tx_tasklet_hdl(unsigned long)" \
+          || { echo "::error::88x2bu CFI patch missing (mesh tasklet)"; exit 1; }
+        if grep -rq "(void(\*)(unsigned long))" "$DW/hal/hal_hci/hal_usb.c" "$DW/hal/rtl8822b/usb/rtl8822bu_xmit.c" "$DW/core/mesh/rtw_mesh.c"; then
+          echo "::error::88x2bu tasklet callback casts still present after patch"; exit 1
+        fi
+        echo "cfi fix: no tasklet callback casts left"
         sed -i 's|^ccflags-y += -Wno-stringop-overread|#ccflags-y += -Wno-stringop-overread|' "$DW/Makefile"
         printf '\nccflags-y += -Wno-error\n' >> "$DW/Makefile"
         # In-tree kbuild reads this Makefile with cwd=srctree, which breaks

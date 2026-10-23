@@ -1,0 +1,115 @@
+diff --git a/core/mesh/rtw_mesh.c b/core/mesh/rtw_mesh.c
+index 25c17cf..78548d4 100644
+--- a/core/mesh/rtw_mesh.c
++++ b/core/mesh/rtw_mesh.c
+@@ -2954,9 +2954,9 @@ exit:
+ 	return annc_cnt;
+ }
+ 
+-static void mpath_tx_tasklet_hdl(void *priv)
++static void mpath_tx_tasklet_hdl(unsigned long data)
+ {
+-	_adapter *adapter = (_adapter *)priv;
++	_adapter *adapter = (_adapter *)data;
+ 	struct rtw_mesh_info *minfo = &adapter->mesh_info;
+ 	struct xmit_frame *xframe;
+ 	_list *list, *head;
+@@ -3377,7 +3377,7 @@ void rtw_mesh_init_mesh_info(_adapter *adapter)
+ 
+ 	_rtw_init_queue(&minfo->mpath_tx_queue);
+ 	tasklet_init(&minfo->mpath_tx_tasklet
+-		, (void(*)(unsigned long))mpath_tx_tasklet_hdl
++		, mpath_tx_tasklet_hdl
+ 		, (unsigned long)adapter);
+ 
+ 	rtw_mrc_init(adapter);
+diff --git a/hal/hal_hci/hal_usb.c b/hal/hal_hci/hal_usb.c
+index d683499..1193958 100644
+--- a/hal/hal_hci/hal_usb.c
++++ b/hal/hal_hci/hal_usb.c
+@@ -26,11 +26,7 @@ int	usb_init_recv_priv(_adapter *padapter, u16 ini_in_buf_sz)
+ 
+ #ifdef PLATFORM_LINUX
+ 	tasklet_init(&precvpriv->recv_tasklet,
+-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0) && !defined(RHEL92))
+-		     (void(*)(unsigned long))usb_recv_tasklet,
+-#else
+-		     (void *)usb_recv_tasklet,
+-#endif
++		     usb_recv_tasklet,
+ 		     (unsigned long)padapter);
+ #endif /* PLATFORM_LINUX */
+ 
+diff --git a/hal/rtl8822b/usb/rtl8822bu_xmit.c b/hal/rtl8822b/usb/rtl8822bu_xmit.c
+index 711bdbd..ccf8a35 100644
+--- a/hal/rtl8822b/usb/rtl8822bu_xmit.c
++++ b/hal/rtl8822b/usb/rtl8822bu_xmit.c
+@@ -847,10 +847,10 @@ static s32 rtl8822bu_xmitframe_complete(PADAPTER padapter, struct xmit_priv *pxm
+ }
+ #endif
+ 
+-static void rtl8822bu_xmit_tasklet(void *priv)
++static void rtl8822bu_xmit_tasklet(unsigned long data)
+ {
+ 	int ret = _FALSE;
+-	_adapter *padapter = (_adapter *)priv;
++	_adapter *padapter = (_adapter *)data;
+ 	struct xmit_priv *pxmitpriv = &padapter->xmitpriv;
+ 
+ 	while (1) {
+@@ -878,11 +878,7 @@ s32	rtl8822bu_init_xmit_priv(PADAPTER padapter)
+ 
+ #ifdef PLATFORM_LINUX
+ 	tasklet_init(&pxmitpriv->xmit_tasklet,
+-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 17, 0) && !defined(RHEL92))
+-		     (void(*)(unsigned long))rtl8822bu_xmit_tasklet,
+-#else
+-		     (void *)rtl8822bu_xmit_tasklet,
+-#endif
++		     rtl8822bu_xmit_tasklet,
+ 		     (unsigned long)padapter);
+ #endif
+ #ifdef CONFIG_TX_EARLY_MODE
+diff --git a/include/usb_ops_linux.h b/include/usb_ops_linux.h
+index bf59ca0..2c2050d 100644
+--- a/include/usb_ops_linux.h
++++ b/include/usb_ops_linux.h
+@@ -89,7 +89,7 @@ int usb_write16(struct intf_hdl *pintfhdl, u32 addr, u16 val);
+ int usb_write32(struct intf_hdl *pintfhdl, u32 addr, u32 val);
+ int usb_writeN(struct intf_hdl *pintfhdl, u32 addr, u32 length, u8 *pdata);
+ u32 usb_read_port(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, u8 *rmem);
+-void usb_recv_tasklet(void *priv);
++void usb_recv_tasklet(unsigned long data);
+ 
+ #ifdef CONFIG_USB_INTERRUPT_IN_PIPE
+ void usb_read_interrupt_complete(struct urb *purb, struct pt_regs *regs);
+diff --git a/os_dep/linux/usb_ops_linux.c b/os_dep/linux/usb_ops_linux.c
+index a1cea6a..db178b8 100644
+--- a/os_dep/linux/usb_ops_linux.c
++++ b/os_dep/linux/usb_ops_linux.c
+@@ -746,10 +746,10 @@ void usb_init_recvbuf(_adapter *padapter, struct recv_buf *precvbuf)
+ int recvbuf2recvframe(PADAPTER padapter, void *ptr);
+ 
+ #ifdef CONFIG_USE_USB_BUFFER_ALLOC_RX
+-void usb_recv_tasklet(void *priv)
++void usb_recv_tasklet(unsigned long data)
+ {
+ 	struct recv_buf *precvbuf = NULL;
+-	_adapter	*padapter = (_adapter *)priv;
++	_adapter	*padapter = (_adapter *)data;
+ 	struct recv_priv	*precvpriv = &padapter->recvpriv;
+ 
+ 	while (NULL != (precvbuf = rtw_dequeue_recvbuf(&precvpriv->recv_buf_pending_queue))) {
+@@ -884,10 +884,10 @@ u32 usb_read_port(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, u8 *rmem)
+ }
+ #else	/* CONFIG_USE_USB_BUFFER_ALLOC_RX */
+ 
+-void usb_recv_tasklet(void *priv)
++void usb_recv_tasklet(unsigned long data)
+ {
+ 	_pkt			*pskb;
+-	_adapter		*padapter = (_adapter *)priv;
++	_adapter		*padapter = (_adapter *)data;
+ 	struct recv_priv	*precvpriv = &padapter->recvpriv;
+ 	struct recv_buf	*precvbuf = NULL;
+ 
