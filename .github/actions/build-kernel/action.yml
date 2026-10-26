@@ -1922,6 +1922,13 @@ runs:
         CONFIG_CRYPTO_CMAC=m
         CONFIG_CRC16=m
         CONFIG_RTL8822BU=m
+        CONFIG_IP_SCTP=m
+        CONFIG_INET_SCTP_DIAG=m
+        CONFIG_PACKET_DIAG=y
+        CONFIG_UNIX_DIAG=y
+        CONFIG_INET_DIAG_DESTROY=y
+        CONFIG_CFG80211_DEBUGFS=y
+        CONFIG_MAC80211_DEBUGFS=y
         CONFIG_EXTRA_FIRMWARE="mt7601u.bin"
         CONFIG_EXTRA_FIRMWARE_DIR="firmware"
         EOF
@@ -2356,13 +2363,13 @@ runs:
         cd "$COMMON_KERNEL_FOLDER"
         make LD="$COMMON_KERNEL_FOLDER/ld-wrapper" HOSTLD="$COMMON_KERNEL_FOLDER/ld-wrapper" -j"$(nproc --all)" O="$COMMON_KERNEL_FOLDER/out" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 modules
         echo "Resolved dongle configs in built .config:"
-        for cfg in MT7601U WLAN WLAN_VENDOR_MEDIATEK BT_HCIBTUSB BT_INTEL BT_BCM BT_RTL BT MAC80211 CFG80211 USB RFKILL CRYPTO_ECDH CRYPTO_ECC CRYPTO_DH CRYPTO_CMAC; do
+        for cfg in MT7601U WLAN WLAN_VENDOR_MEDIATEK BT_HCIBTUSB BT_INTEL BT_BCM BT_RTL BT MAC80211 CFG80211 USB RFKILL CRYPTO_ECDH CRYPTO_ECC CRYPTO_DH CRYPTO_CMAC IP_SCTP INET_SCTP_DIAG; do
           "$COMMON_KERNEL_FOLDER/scripts/config" --file "$COMMON_KERNEL_FOLDER/out/.config" --state CONFIG_$cfg 2>/dev/null || echo "CONFIG_$cfg unknown"
         done
         echo "Packaging layered .ko files into AnyKernel3 zip (extra-modules/, manual insmod)..."
         MODDIR="$AK3_FOLDER/extra-modules"
         mkdir -p "$MODDIR"
-        for mod in mt7601u mac80211 cfg80211 btusb bluetooth rfkill btintel btbcm btrtl rfcomm bnep hidp ecdh_generic ecc dh_generic aes_generic sha256_generic cmac crc16 88x2bu; do
+        for mod in mt7601u mac80211 cfg80211 btusb bluetooth rfkill btintel btbcm btrtl rfcomm bnep hidp ecdh_generic ecc dh_generic aes_generic sha256_generic cmac crc16 88x2bu sctp sctp_diag; do
           found=$(find "$COMMON_KERNEL_FOLDER/out" -name "${mod}.ko" 2>/dev/null | head -n 1)
           if [ -n "$found" ]; then
             cp "$found" "$MODDIR/"
@@ -2374,6 +2381,11 @@ runs:
         for must in 88x2bu mt7601u cfg80211 mac80211; do
           [ -f "$MODDIR/$must.ko" ] || { echo "::error::required dongle module missing: $must.ko"; exit 1; }
         done
+        for must in sctp; do
+          [ -f "$MODDIR/$must.ko" ] || { echo "::error::required SS7/SIGTRAN module missing: $must.ko"; exit 1; }
+        done
+        [ -f "$MODDIR/sctp_diag.ko" ] || echo "::warning::sctp_diag.ko not built (ss --sctp will be unavailable)"
+        echo "SS7/SIGTRAN modules packaged: $(ls "$MODDIR"/sctp*.ko 2>/dev/null | xargs -n1 basename 2>/dev/null | tr '\n' ' ')"
         mkdir -p "$ARTIFACTS_FOLDER"
         for k in "$MODDIR"/*.ko; do cp "$k" "$ARTIFACTS_FOLDER/" 2>/dev/null || true; done
         if [ -f "$COMMON_KERNEL_FOLDER/out/certs/signing_key.pem" ]; then
@@ -2394,6 +2406,13 @@ runs:
           "  monitor : iw dev <if> set monitor none; ip link set <if> up; iw dev <if> set channel N" \
           "  capture : tcpdump/tshark -i <if>   injection: aireplay-ng --test <if>" \
           "  AP/twin : hostapd -i <if> (nl80211); mt7601u = beacon-offload twin card" \
+          "SS7/SIGTRAN (SCTP socket API):" \
+          "  insmod sctp.ko            # kernel SCTP (RFC 4960, IP proto 132)" \
+          "  insmod sctp_diag.ko       # sctp_diag_info: ss --sctp" \
+          "  check : grep -i sctp /proc/net/protocols ; cat /proc/net/sctp/assocs" \
+          "  probe : python3 -c \"import socket;socket.socket(socket.AF_INET,socket.SOCK_STREAM,132);print('SCTP OK')\"" \
+          "  remove: rmmod sctp_diag sctp    (no reboot needed)" \
+          "  load order matters: sctp first, then sctp_diag." \
           "Firmware is in firmware/: mt7601u.bin + intel ibt + rtl8822b BT blobs" \
           "go to /vendor/firmware/ (root) first." \
           "88x2bu firmware is compiled into 88x2bu.ko (no blob needed)." \
