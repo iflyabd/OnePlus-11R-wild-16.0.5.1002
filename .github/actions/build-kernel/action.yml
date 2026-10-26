@@ -2440,7 +2440,8 @@ runs:
           "  insmod sctp_diag.ko       # sctp_diag_info: ss --sctp" \
           "  check : grep -i sctp /proc/net/protocols ; cat /proc/net/sctp/assocs" \
           "  probe : python3 -c \"import socket;socket.socket(socket.AF_INET,socket.SOCK_STREAM,132);print('SCTP OK')\"" \
-          "  remove: rmmod sctp_diag sctp    (no reboot needed)" \
+          "  remove: rmmod sctp_diag sctp  (sctp pins itself while loaded, so a" \
+          "          full unload happens on reboot; the boot hook reloads it)" \
           "  load order matters: sctp first, then sctp_diag." \
           "Firmware is in firmware/: mt7601u.bin + intel ibt + rtl8822b BT blobs" \
           "go to /vendor/firmware/ (root) first." \
